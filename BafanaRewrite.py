@@ -1,5 +1,3 @@
-# This is a sample Python script.
-404 lines (322 sloc)  10.3 KB
 
 from tempfile import SpooledTemporaryFile
 from pythonosc import udp_client
@@ -18,6 +16,25 @@ import time
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 
+def test(name,*args):
+    totalt = np.sum(np.array(list(args)))
+    timeq.put(totalt)
+
+def motifRecognizer(name,*args):
+    receivedm = np.sum(np.array(list(args)))
+    if not desiredm.empty():
+        testm = desiredm.get()
+    else:
+        testm = [-1, -1] # something that will never be true
+    motifnum = int(receivedm)
+    for m in testm:
+        if m == motifnum:
+            motifq.put(motifnum)
+
+def follow(name,*args):
+    received = np.array(list(args))
+    motifswapper.put(received)
+
 def delayT(tElapse,motif):
     sectiont = motif[1][0]
     totalT = motif[1][1]
@@ -26,12 +43,6 @@ def delayT(tElapse,motif):
     speed = 1024/ratio #1024 is 1X speed
     return [speed,delayToEnd]
 
-
-
-def main(name):
-    # Use a breakpoint in the code line below to debug your script.
-
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
 
 def section1():
     current = int(motifq.get)
@@ -91,15 +102,16 @@ def section2():
     timetoRepeat = random.randint(2, 3)
     # we found the motif so wait to play it
     time.sleep((delayToEnd) - ShimonDelay)  # THE SUBTRACTION IS SHIMONS OFFSET
-    client.send_message("/play", [current, speed])
+    client.send_message("/play", [current, speedF])
     delaytoEnd2 = float((ttime / currentmotif[1][0]) * (currentmotif[1][1]))
     i = 0
     # play it a couple times
     for i in range(timetoRepeat):
-        client.send_message("/play", [current, speed])
+        client.send_message("/play", [current, speedF])
         time.sleep(delaytoEnd2)
     #### Alternate between motif 1 and 2 ###
     client.send_message("/listen2", 1)
+    desiredm.put([2, 3])
     print("damn we made it")
     while motifq.empty() == True:
         randomizer = random.randint(0, 5)
@@ -111,7 +123,7 @@ def section2():
         currentmotif = newTempMotif[whattodo]
         if whattodo < 2:
             print("play!", whattodo)
-            client.send_message("/play", [whattodo, speed])
+            client.send_message("/play", [whattodo, speedF])
 
         else:
             whattodo = 1
@@ -130,8 +142,45 @@ def section2():
         end = int(motifq.get())
         endt = float((newTempMotif[end][1][1] - newTempMotif[end][1][0]))
         time.sleep(endt - ShimonDelay)
-    return speedF, newTempMotif
+    return speedF, newTempMotif, end
 
+
+def section3():
+    motifswap = [2,3]
+    while motifq.empty() == True:
+        if motifswapper.empty() == False:
+            motifswap = motifswapper.get()
+            print(motifswap)
+        randomizer = random.randint(0, 8)
+        if randomizer == 6:
+            whattodo = 2
+            motifplay = motifswap[0]
+        else:
+            whattodo = randomizer % 2
+            motifplay = motifswap[whattodo]
+            motifs = int(motifplay)
+
+        if whattodo < 2:
+            print("play!", whattodo)
+            client.send_message("/play", [motifs, speedFin])
+
+        else:
+            whattodo = 1
+            print("waiting")
+            client.send_message("/breath", 1)
+        delayToEnd = float(newTempMotif[whattodo][1][1])
+        t_start = time.time()
+        t_count = 0
+        while t_count < delayToEnd:
+            t_check  = time.time()
+            t_count = t_check - t_start
+            time.sleep(0.001)
+            if motifq.empty() == False:
+                break
+    end = int(motifq.get())
+    endt = float((newTempMotif[end][1][1] - newTempMotif[end][1][0]))
+    time.sleep(endt - ShimonDelay)
+    return end
 
 
 # Press the green button in the gutter to run the script.
@@ -156,6 +205,7 @@ if __name__ == '__main__':
     # liten = queue.Queue()
     # lastsection = queue.Queue()
     motifswapper = queue.Queue()
+    desiredm = queue.Queue()
     # midi BPM is 120
     motif1 = [[60, 64, 65], [3000, 8000]]
     motif2 = [[60, 60, 64], [3224, 10000]]  # 3062
@@ -171,9 +221,9 @@ if __name__ == '__main__':
 
     global dispatcher
     dispatcher = dispatcher.Dispatcher()
-    dispatcher.map("/filter", bafana)
-    dispatcher.map("/filter2", test)
-    dispatcher.map("/swap", follow)
+    dispatcher.map("/motif", motifRecognizer)
+    dispatcher.map("/time", test)
+    dispatcher.map("/follow", follow)
 
 
     def server():
@@ -188,14 +238,52 @@ if __name__ == '__main__':
     client = udp_client.SimpleUDPClient(IP, PORT_TO_MAX)
 
     section = 1
+
     ##### Section 1 #######
     client.send_message("/listen", 1)
+    desiredm.put([0, 1])
     section1()
+
     ##### Section 2 #######
-    global globaltempo
+    global speedFin
     global newMotifList
-    speedFin, newMotifList  = section2()
+    desiredm.put([0, 1])
+    speedFin, newMotifList,lastMotif  = section2()
+    # UNCOMMENT BELOW TO SET TEMPO MANUALLY
+    # speedFin = 1024
+    # newMotifList = 2
     print(speedFin)
+
+    randomplay = random.randint(2, 3)
+    client.send_message("/inter", 1)
+    for i in range(randomplay):
+        client.send_message("/play", [lastMotif, speedFin])
+        time.sleep(newMotifList[lastMotif][1][1])
+
     #### Section 3 ########
+    client.send_message("/listen2", 3)
+    desiredm.put([6])
+    bassmotif = section3()
+    client.send_message("/inter", 1)
+    for i in range(3):
+        client.send_message("/play", [bassmotif, speedFin])
+        time.sleep(newMotifList[bassmotif][1][1])
+
+    #### Section 4 #######
+    # we run this section in MAx so just send a start command
+    client.send_message("/inter", 1)
+    client.send_message("/doubleplay", 1)
+
+    #### Section 5 #######
+    desiredm.put([0]) #listening only for original motif
+    finalmotif = motifq.get()
+    delay = float((newTempMotif[finalmotif][1][1] - newTempMotif[finalmotif][1][0]) - ShimonDelay)
+    time.sleep(delay)
+    client.send_message("/finale", 1)
+    for i in range(3):
+        client.send_message("/play", [finalmotif, speedFin])
+        delayToEnd = float(newTempMotif[finalmotif][1][1])
+        time.sleep(delayToEnd)
 
 
+# See PyCharm help at https://www.jetbrains.com/help/pycharm/
